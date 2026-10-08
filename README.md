@@ -42,6 +42,7 @@ gifcap sheet take.mkv sheet.png                            # contact sheet to re
 gifcap gif take.mkv out.gif --trim 0.5- --speed 4.6-31=4   # speed up the wait for an AI reply
 gifcap mp4 take.mkv out.mp4 --redact 1820,0,200,30         # solid box over anything confidential
 gifcap copy out.gif                                        # clipboard, pastes animated
+gifcap reel reel.json sizzle.mp4                           # title cards + clips + stills, captioned
 ```
 
 Also: `monitors`, `record --background` / `stop`, `focus`, `click`, `drag`, `type`, `keys`, `wait-idle`, `idle`,

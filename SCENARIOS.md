@@ -54,6 +54,28 @@ case-insensitive; `gifcap windows` lists them.
 - Use demo-safe sample data. Before sharing, review a contact sheet (`gifcap sheet`) for anything confidential and
   cover it with `--redact x,y,w,h` (solid box, unrecoverable) rather than `--blur`.
 
+## Reels
+
+`gifcap reel reel.json out.mp4` joins title cards, clips and stills into one captioned MP4 with crossfades.
+Paths are relative to the reel file.
+
+```json
+{
+  "size": [1920, 1080],
+  "transition": 0.4,
+  "items": [
+    {"title": "Contract Coach", "subtitle": "Commercial Legal · Team 4", "seconds": 3},
+    {"clip": "takes/nda-risk-summary.mkv", "trim": "0.5-32", "speed": ["4.6-31.2=4"], "caption": "Flags off-standard clauses in seconds"},
+    {"image": "stills/redline.png", "seconds": 3, "caption": "Suggested redlines land in Word"},
+    {"title": "Thank you", "subtitle": "Ask us for a walkthrough", "seconds": 2}
+  ]
+}
+```
+
+Clip items take the same options as `gifcap mp4`: `trim`, `speed` (list), `auto_speed`, `redact`, `blur`, `crop`.
+Optional top-level keys: `fps` (30), `background` and `accent` for title cards, `letterbox` (colour around clips
+that aren't 16:9).
+
 ## Tips
 
 - Times in the timeline are accurate to about ±0.3 s; trim a little generously.
