@@ -2,6 +2,10 @@
 
 Record part of your screen as a high-quality GIF, straight to the clipboard. Windows only.
 
+![Typing into Notepad, recorded with GIF Capture](docs/demo.gif)
+
+*Recorded with GIF Capture itself.*
+
 1. Press **Win+Shift+D** and drag over the area you want.
 2. Recording starts when you let go. Press **Win+Shift+D** again or click **Stop** (30 s max).
 3. Scrub and trim in the editor, then press **Enter**.
