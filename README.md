@@ -2,9 +2,9 @@
 
 Record part of your screen as a high-quality GIF, straight to the clipboard. Windows only.
 
-![Typing into Notepad, recorded with GIF Capture](docs/demo.gif)
+![Win+Shift+D, drag over Notepad, type, trim, copy, paste into Obsidian](docs/demo.gif)
 
-*Recorded with GIF Capture itself.*
+*The whole flow: Win+Shift+D, drag a region, record, trim, copy, paste into Obsidian. The GIF that lands in Obsidian was made by GIF Capture; the outer recording was made with ffmpeg, since GIF Capture can't film its own overlays.*
 
 1. Press **Win+Shift+D** and drag over the area you want.
 2. Recording starts when you let go. Press **Win+Shift+D** again or click **Stop** (30 s max).
