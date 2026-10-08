@@ -556,6 +556,7 @@ class Editor:
     # ---- UI
     def _build_ui(self):
         win = self.win = tk.Toplevel(self.app.root, bg=BG)
+        win.withdraw()  # stay hidden until positioned, or Windows picks the spot
         win.title("GIF Capture — Trim")
         win.resizable(False, False)
         win.protocol("WM_DELETE_WINDOW", self.cancel)
@@ -613,6 +614,7 @@ class Editor:
         l, t, r, b = work_area(rect_center(self.rec.rect))  # same monitor as the capture
         ww, wh = win.winfo_reqwidth(), win.winfo_reqheight()
         win.geometry(f"+{l + (r - l - ww) // 2}+{t + max(0, (b - t - wh) // 2)}")
+        win.deiconify()
         win.attributes("-topmost", True)
         win.after(300, lambda: win.attributes("-topmost", False))
         win.focus_force()
