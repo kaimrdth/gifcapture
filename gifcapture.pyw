@@ -128,10 +128,29 @@ def virtual_screen():
     return gsm(76), gsm(77), gsm(78), gsm(79)  # x, y, w, h
 
 
-def work_area():
-    r = wt.RECT()
-    user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0)  # SPI_GETWORKAREA
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+
+
+user32.MonitorFromPoint.argtypes, user32.MonitorFromPoint.restype = [wt.POINT, wt.DWORD], wt.HANDLE
+user32.GetMonitorInfoW.argtypes = [wt.HANDLE, ctypes.POINTER(MONITORINFO)]
+
+
+def work_area(point=None):
+    """Work area of the monitor containing `point` (primary monitor if None)."""
+    if point is None:
+        r = wt.RECT()
+        user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0)  # SPI_GETWORKAREA
+    else:
+        mi = MONITORINFO(cbSize=ctypes.sizeof(MONITORINFO))
+        user32.GetMonitorInfoW(user32.MonitorFromPoint(wt.POINT(*point), 2), ctypes.byref(mi))  # nearest
+        r = mi.rcWork
     return r.left, r.top, r.right, r.bottom
+
+
+def rect_center(rect):
+    x, y, w, h = rect
+    return x + w // 2, y + h // 2
 
 
 # ---------------------------------------------------------------- clipboard --
@@ -591,7 +610,7 @@ class Editor:
             win.bind(k, fn)
 
         win.update_idletasks()
-        l, t, r, b = work_area()
+        l, t, r, b = work_area(rect_center(self.rec.rect))  # same monitor as the capture
         ww, wh = win.winfo_reqwidth(), win.winfo_reqheight()
         win.geometry(f"+{l + (r - l - ww) // 2}+{t + max(0, (b - t - wh) // 2)}")
         win.attributes("-topmost", True)
@@ -781,7 +800,7 @@ class Editor:
             self.exporting = False
             self.copy_btn.configure(state="normal", text="Copy GIF  ⏎")
             return
-        self.app.deliver(self.target, gif_size(self.w, self.h))
+        self.app.deliver(self.target, gif_size(self.w, self.h), self.rec.rect)
         self.close()
 
     def cancel(self):
@@ -860,7 +879,7 @@ class App:
     def editor_closed(self):
         self.editor, self.state = None, "idle"
 
-    def deliver(self, gif: Path, size):
+    def deliver(self, gif: Path, size, rect):
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         dest = OUTPUT_DIR / f"gif_{datetime.now():%Y%m%d_%H%M%S}.gif"
         shutil.copyfile(gif, dest)
@@ -869,16 +888,17 @@ class App:
             head = "GIF copied to clipboard"
         except OSError as e:
             head = f"Couldn't use clipboard ({e})"
-        self.toast(f"{head}\n{fmt_bytes(dest.stat().st_size)} · {size[0]}×{size[1]} · {dest.name}")
+        self.toast(f"{head}\n{fmt_bytes(dest.stat().st_size)} · {size[0]}×{size[1]} · {dest.name}",
+                   near=rect_center(rect))
 
-    def toast(self, text, ms=3500):
+    def toast(self, text, ms=3500, near=None):
         t = tk.Toplevel(self.root, bg=PANEL)
         t.overrideredirect(True)
         t.attributes("-topmost", True, "-alpha", 0.96)
         tk.Label(t, text=text, bg=PANEL, fg=FG, font=("Segoe UI", 10), justify="left",
                  padx=16, pady=12).pack()
         t.update_idletasks()
-        _, _, r, b = work_area()
+        _, _, r, b = work_area(near)
         t.geometry(f"+{r - t.winfo_reqwidth() - 20}+{b - t.winfo_reqheight() - 20}")
         t.bind("<Button-1>", lambda e: t.destroy())
         t.after(ms, t.destroy)
