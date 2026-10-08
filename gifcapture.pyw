@@ -306,10 +306,13 @@ class TrayThread(threading.Thread):
 
 # ------------------------------------------------------------------- ffmpeg --
 def find_ffmpeg():
-    # Installed build ships ffmpeg.exe next to GifCapture.exe; dev runs fall back to PATH.
+    # Installed build ships ffmpeg.exe next to GifCapture.exe (gifcap.exe lives one level down,
+    # in cli\); dev runs fall back to PATH.
     here = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent
-    bundled = here / "ffmpeg.exe"
-    return str(bundled) if bundled.exists() else shutil.which("ffmpeg")
+    for d in (here, here.parent):
+        if (d / "ffmpeg.exe").exists():
+            return str(d / "ffmpeg.exe")
+    return shutil.which("ffmpeg")
 
 
 FFMPEG = find_ffmpeg()

@@ -29,12 +29,32 @@ If Windows shows "Windows protected your PC", click **More info → Run anyway**
 | Enter | Copy GIF |
 | Esc | Discard |
 
+## For agents and scripts: `gifcap`
+
+The installer also puts `gifcap` on your PATH: the same recorder and encoder, driven from the command line, for
+desktop agents (Claude Code, Codex) or scripts. Every command prints JSON.
+
+```
+gifcap windows                                             # what's open, where, on which monitor
+gifcap record take.mkv --window "Contract Coach" --duration 8
+gifcap run scene.json                                      # drive the app and record (see SCENARIOS.md)
+gifcap sheet take.mkv sheet.png                            # contact sheet to review a take
+gifcap gif take.mkv out.gif --trim 0.5- --speed 4.6-31=4   # speed up the wait for an AI reply
+gifcap mp4 take.mkv out.mp4 --redact 1820,0,200,30         # solid box over anything confidential
+gifcap copy out.gif                                        # clipboard, pastes animated
+```
+
+Also: `monitors`, `record --background` / `stop`, `focus`, `click`, `drag`, `type`, `keys`, `wait-idle`, `idle`,
+`still`. `gifcap <command> --help` for options. Typing and key presses only go to a window you name, checked before
+every keystroke, so a demo script can't type into the wrong app.
+
 ## Run from source
 
 Requires Python 3.9+ and ffmpeg on `PATH` (`winget install Gyan.FFmpeg`).
 
 ```
 pythonw gifcapture.pyw
+python gifcap.py --help
 ```
 
 Settings (hotkey, frame rate, max length, max width) are constants at the top of `gifcapture.pyw`.
@@ -44,7 +64,7 @@ Settings (hotkey, frame rate, max length, max width) are constants at the top of
 Requires Inno Setup 6 (`winget install JRSoftware.InnoSetup --scope user`). Produces `dist\GifCapture-Setup.exe`:
 
 ```
-powershell -ExecutionPolicy Bypass -File build.ps1 -Version 1.0.1
+powershell -ExecutionPolicy Bypass -File build.ps1 -Version 1.1.1
 ```
 
 ## How it works
