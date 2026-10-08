@@ -33,9 +33,16 @@ $icon = Join-Path $work "icon.ico"
     --icon $icon --distpath "$work\dist" --workpath "$work\build" --specpath $work (Join-Path $root "gifcapture.pyw")
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
-# 2) App + ffmpeg -> GifCapture-Setup.exe
+# 1b) Command line for agents and scripts -> gifcap.exe (console). It imports gifcapture.pyw.
+& "$venv\Scripts\pyinstaller.exe" --noconfirm --clean --log-level WARN --console --name gifcap `
+    --paths $root --hidden-import gifcapture --icon $icon --distpath "$work\dist" --workpath "$work\build-cli" `
+    --specpath $work (Join-Path $root "gifcap.py")
+if ($LASTEXITCODE) { throw "PyInstaller (gifcap) failed" }
+
+# 2) App + CLI + ffmpeg -> GifCapture-Setup.exe
 $out = Join-Path $root "dist"
-& $iscc /Q "/DAppVersion=$Version" "/DAppDir=$work\dist\GifCapture" "/DFFmpeg=$ffmpeg" "/DFFmpegLicense=$ffLicense" `
+& $iscc /Q "/DAppVersion=$Version" "/DAppDir=$work\dist\GifCapture" "/DCliDir=$work\dist\gifcap" `
+    "/DFFmpeg=$ffmpeg" "/DFFmpegLicense=$ffLicense" `
     "/DIconFile=$icon" "/DOutDir=$out" (Join-Path $root "packaging\installer.iss")
 if ($LASTEXITCODE) { throw "Inno Setup failed" }
 
