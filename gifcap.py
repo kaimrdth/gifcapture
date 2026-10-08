@@ -15,6 +15,7 @@ Every command prints JSON to stdout (errors: {"error": ...} with a non-zero exit
   gifcap mp4 IN.mkv OUT.mp4           same options, as video
   gifcap sheet IN OUT.png             contact sheet with timestamps, for reviewing a take
   gifcap still IN --at T OUT.png      one frame
+  gifcap reel REEL.json OUT.mp4       title cards + clips + stills -> one captioned video
   gifcap copy FILE.gif                put a GIF on the clipboard (pastes animated)
 
 Run `gifcap <command> --help` for options.
@@ -25,6 +26,7 @@ import ctypes.wintypes as wt
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,7 +36,7 @@ from pathlib import Path
 
 import gifcapture as core  # shared Win32/ffmpeg helpers; also makes this process DPI aware
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 user32, kernel32 = core.user32, core.kernel32
 dwmapi = ctypes.WinDLL("dwmapi")
 kernel32.OpenProcess.argtypes, kernel32.OpenProcess.restype = [wt.DWORD, wt.BOOL, wt.DWORD], wt.HANDLE
@@ -530,6 +532,94 @@ def still(src, at, dst):
     return {"file": str(Path(dst).resolve()), "at": at}
 
 
+# -------------------------------------------------------------------- reel --
+FONT = "C\\:/Windows/Fonts/segoeui.ttf"
+FONT_SEMIBOLD = "C\\:/Windows/Fonts/seguisb.ttf"
+
+
+def _ffmpeg(args, what):
+    r = subprocess.run([core.FFMPEG, "-hide_banner", "-loglevel", "error", "-y", *map(str, args)],
+                       capture_output=True, text=True, creationflags=core.CREATE_NO_WINDOW)
+    if r.returncode:
+        raise Fail(f"{what} failed: {r.stderr.strip()[-600:]}")
+
+
+def _text_filter(work, text, size, y, color="white", font=FONT, box=None):
+    """drawtext via a text file, so quotes, colons and accents need no escaping."""
+    f = Path(work) / f"t{uuid.uuid4().hex[:8]}.txt"
+    f.write_text(text, encoding="utf-8")
+    path = str(f).replace("\\", "/").replace(":", "\\:")
+    boxopt = f":box=1:boxcolor={box}:boxborderw={int(size * 0.5)}" if box else ""
+    return (f"drawtext=fontfile='{font}':textfile='{path}':fontsize={size}:fontcolor={color}"
+            f":x=(w-tw)/2:y={y}:line_spacing={int(size * 0.25)}{boxopt}")
+
+
+def reel(spec_path, out_path):
+    """Join title cards, clips and stills into one MP4 with captions and crossfades. See SCENARIOS.md."""
+    spec_path = Path(spec_path)
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    base = spec_path.parent
+    W, H = spec.get("size", [1920, 1080])
+    fps = spec.get("fps", 30)
+    fade = float(spec.get("transition", 0.4))
+    bg, accent = spec.get("background", "0x1b1b1f"), spec.get("accent", "0x4c8bf5")
+    work = Path(tempfile.mkdtemp(prefix="gifcap-reel-"))
+    fit = (f"scale={W}:{H}:force_original_aspect_ratio=decrease:flags=lanczos,"
+           f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color={spec.get('letterbox', '0xf3f4f7')},setsar=1")
+    caption = lambda text: "," + _text_filter(work, text, int(H / 24), f"h-th-{int(H / 13)}", box="black@0.62")
+    segs = []
+    try:
+        for i, item in enumerate(spec["items"]):
+            seg = work / f"seg{i:02d}.mp4"
+            enc = ["-r", fps, "-c:v", "libx264", "-crf", "16", "-preset", "medium", "-pix_fmt", "yuv420p", "-an", seg]
+            if "title" in item:
+                secs = float(item.get("seconds", 3))
+                vf = (f"drawbox=x=0:y=0:w=iw:h={max(6, H // 120)}:color={accent}:t=fill,"
+                      + _text_filter(work, item["title"], int(H / 11), f"(h/2)-th-{int(H / 40)}", font=FONT_SEMIBOLD))
+                if item.get("subtitle"):
+                    vf += "," + _text_filter(work, item["subtitle"], int(H / 26), f"(h/2)+{int(H / 30)}",
+                                             color="0xc9cbd3")
+                _ffmpeg(["-f", "lavfi", "-i", f"color=c={bg}:s={W}x{H}:d={secs}:r={fps}", "-vf", vf, *enc],
+                        f"title card {i + 1}")
+            elif "clip" in item:
+                src = base / item["clip"]
+                opts = argparse.Namespace(
+                    trim=parse_range(item["trim"]) if item.get("trim") else None, speed=item.get("speed"),
+                    auto_speed=item.get("auto_speed"), still_min=1.5, speed_label=item.get("speed_label", True),
+                    redact=item.get("redact"), blur=item.get("blur"), crop=item.get("crop"), fps=fps,
+                    max_width=10000)
+                mid = work / f"clip{i:02d}.mp4"
+                encode(src, mid, opts, for_gif=False)
+                vf = fit + (caption(item["caption"]) if item.get("caption") else "")
+                _ffmpeg(["-i", mid, "-vf", vf, *enc], f"clip {i + 1}")
+            elif "image" in item:
+                secs = float(item.get("seconds", 3))
+                vf = fit + (caption(item["caption"]) if item.get("caption") else "")
+                _ffmpeg(["-loop", "1", "-t", secs, "-i", base / item["image"], "-vf", vf, *enc], f"image {i + 1}")
+            else:
+                raise Fail(f"reel item {i + 1} needs one of: title, clip, image")
+            segs.append((seg, probe_duration(seg)))
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        inputs = [x for s, _ in segs for x in ("-i", s)]
+        if len(segs) == 1 or fade <= 0:
+            graph = "".join(f"[{i}:v]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=0[v]"
+        else:
+            parts, prev, t = [], "[0:v]", 0.0
+            for i in range(1, len(segs)):
+                t += segs[i - 1][1] - fade
+                label = "[v]" if i == len(segs) - 1 else f"[x{i}]"
+                parts.append(f"{prev}[{i}:v]xfade=transition=fade:duration={fade}:offset={t:.3f}{label}")
+                prev = label
+            graph = ";".join(parts)
+        _ffmpeg([*inputs, "-filter_complex", graph, "-map", "[v]", "-c:v", "libx264", "-crf", "18", "-preset", "slow",
+                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", out], "joining the reel")
+        return {"file": str(out.resolve()), "duration": probe_duration(out), "size": core.fmt_bytes(out.stat().st_size),
+                "items": len(segs), "width": W, "height": H}
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 # ---------------------------------------------------------------- scenario --
 ACTIONS = ("focus", "record_start", "record_stop", "click", "double_click", "right_click", "drag", "move",
            "type", "keys", "wait", "wait_idle", "mark", "screenshot")
@@ -781,6 +871,10 @@ def main(argv=None):
     s.add_argument("output")
     s.add_argument("--at", type=float, default=0.0)
 
+    s = sub.add_parser("reel", help="join title cards, clips and stills into one MP4 (see SCENARIOS.md)")
+    s.add_argument("spec")
+    s.add_argument("output")
+
     s = sub.add_parser("copy", help="copy a GIF to the clipboard")
     s.add_argument("file")
 
@@ -843,6 +937,8 @@ def main(argv=None):
             out(contact_sheet(a.input, a.output, a.every, a.cols, a.width))
         elif a.cmd == "still":
             out(still(a.input, a.at, a.output))
+        elif a.cmd == "reel":
+            out(reel(a.spec, a.output))
         elif a.cmd == "copy":
             core.copy_gif_to_clipboard(Path(a.file))
             out({"copied": str(Path(a.file).resolve())})
